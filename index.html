@@ -11,6 +11,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Platform SDKs -->
+  <script src="https://sdk.poki.com/v2/poki-sdk.js" defer></script>
+  <script src="https://sdk.crazygames.com/crazygames-sdk-v3.js" defer></script>
   <style>
     * {
       margin: 0;
@@ -2164,7 +2167,16 @@
         <div id="cCoinAmt" style="font-size:16px;color:#4a2800;font-family:'Press Start 2P',cursive;">+0</div>
       </div>
       <button class="btn btn-green" style="width:100%;margin-top:10px;" onclick="closeCharModal()">CONTINUE →</button>
+      <button id="doubleCoinsBtn" class="btn btn-blue" style="width:100%;margin-top:8px;background:linear-gradient(135deg, #FFD700, #FFA500);color:#4a2800;display:none;" onclick="doubleCoinsWithAd()">📺 DOUBLE COINS!</button>
+      <div id="cRewardStatus" style="font-size:6px;color:#e74c3c;margin-top:6px;display:none;"></div>
     </div>
+  </div>
+
+  <!-- ===== AD PLAYING SHIELD ===== -->
+  <div id="adShield" style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); z-index:20000; display:none; flex-direction:column; align-items:center; justify-content:center; color:#fff; font-family:'Press Start 2P',cursive; font-size:12px; pointer-events:auto;">
+    <div style="margin-bottom:15px; animation:bounce 0.6s infinite alternate;">📺</div>
+    <div>AD PLAYING...</div>
+    <div style="font-size:6px; color:#aaa; margin-top:10px;">Gameplay will resume shortly</div>
   </div>
 
   <!-- ===== GACHAPON REWARD MODAL ===== -->
@@ -2349,6 +2361,358 @@
       addScore(e) { try { const a = this.g('lb', []); a.push(e); a.sort((x, y) => y.score - x.score); this.s('lb', a.slice(0, 10)); } catch (e) { } },
       getScores() { return this.g('lb', []); }
     };
+
+    // ===== PLATFORM SDK WRAPPER =====
+    const PlatformSDK = {
+      platform: 'standalone',
+      adActive: false,
+      sessionStartTime: Date.now(),
+      lastAdTime: 0,
+      completedLevelsCount: 0,
+      rewardClaimedForCurrentLevel: false,
+      tempMuted: false,
+
+      init() {
+        this.detectPlatform();
+        console.log(`Detected platform: ${this.platform}`);
+        if (this.platform === 'poki') {
+          this.initPoki();
+        } else if (this.platform === 'crazygames') {
+          this.initCrazyGames();
+        }
+      },
+
+      detectPlatform() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const platformParam = urlParams.get('platform');
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+        if (isLocal && (platformParam === 'poki' || platformParam === 'crazygames')) {
+          this.platform = platformParam;
+        } else if (window.PokiSDK) {
+          this.platform = 'poki';
+        } else if (window.CrazyGames || window.location.hostname.includes('crazygames') || window.location.hostname.includes('crazy')) {
+          this.platform = 'crazygames';
+        } else {
+          this.platform = 'standalone';
+        }
+      },
+
+      initPoki() {
+        if (typeof PokiSDK !== 'undefined') {
+          PokiSDK.init().then(() => {
+            console.log("Poki SDK initialized successfully.");
+          }).catch(() => {
+            console.warn("Poki SDK failed to initialize or adblocker detected.");
+          });
+        }
+      },
+
+      initCrazyGames() {
+        if (window.CrazyGames && window.CrazyGames.SDK) {
+          console.log("CrazyGames SDK initialized successfully.");
+        }
+      },
+
+      gameplayStart() {
+        if (this.platform === 'poki' && typeof PokiSDK !== 'undefined') {
+          PokiSDK.gameplayStart();
+        } else if (this.platform === 'crazygames' && window.CrazyGames && window.CrazyGames.SDK) {
+          window.CrazyGames.SDK.game.gameplayStart();
+        }
+      },
+
+      gameplayStop() {
+        if (this.platform === 'poki' && typeof PokiSDK !== 'undefined') {
+          PokiSDK.gameplayStop();
+        } else if (this.platform === 'crazygames' && window.CrazyGames && window.CrazyGames.SDK) {
+          window.CrazyGames.SDK.game.gameplayStop();
+        }
+      },
+
+      requestMidgameAd(onComplete) {
+        const sessionTime = (Date.now() - this.sessionStartTime) / 1000;
+        const timeSinceLastAd = this.lastAdTime === 0 ? 900 : (Date.now() - this.lastAdTime) / 1000;
+        const isCooldownOk = timeSinceLastAd >= 90;
+
+        const shouldShowAd = sessionTime >= 90 && this.completedLevelsCount >= 2 && isCooldownOk && GS.level > 0;
+
+        if (!shouldShowAd) {
+          if (onComplete) onComplete();
+          return;
+        }
+
+        this.lastAdTime = Date.now();
+
+        if (this.platform === 'poki' && typeof PokiSDK !== 'undefined') {
+          this.pauseGameForAd();
+          let resolved = false;
+          const done = () => {
+            if (resolved) return;
+            resolved = true;
+            this.resumeGameAfterAd();
+            if (onComplete) onComplete();
+          };
+
+          const timeoutId = setTimeout(done, 10000);
+
+          PokiSDK.commercialBreak()
+            .then(() => {
+              clearTimeout(timeoutId);
+              done();
+            })
+            .catch((err) => {
+              clearTimeout(timeoutId);
+              console.warn("Poki commercialBreak error:", err);
+              done();
+            });
+        } else if (this.platform === 'crazygames' && window.CrazyGames && window.CrazyGames.SDK) {
+          this.pauseGameForAd();
+          let resolved = false;
+          const done = () => {
+            if (resolved) return;
+            resolved = true;
+            this.resumeGameAfterAd();
+            if (onComplete) onComplete();
+          };
+
+          const timeoutId = setTimeout(done, 10000);
+
+          window.CrazyGames.SDK.ad.requestAd('midgame', {
+            adStarted: () => {
+              clearTimeout(timeoutId);
+            },
+            adFinished: () => {
+              done();
+            },
+            adError: (error) => {
+              clearTimeout(timeoutId);
+              console.warn("CrazyGames midgame ad error:", error);
+              done();
+            }
+          });
+        } else {
+          if (onComplete) onComplete();
+        }
+      },
+
+      requestRewardedAd(onSuccess, onFailure) {
+        if (this.platform === 'poki' && typeof PokiSDK !== 'undefined') {
+          this.pauseGameForAd();
+          let resolved = false;
+          const done = (success) => {
+            if (resolved) return;
+            resolved = true;
+            this.resumeGameAfterAd();
+            if (success) {
+              if (onSuccess) onSuccess();
+            } else {
+              if (onFailure) onFailure();
+            }
+          };
+
+          const timeoutId = setTimeout(() => done(false), 12000);
+
+          PokiSDK.rewardedBreak()
+            .then((success) => {
+              clearTimeout(timeoutId);
+              done(success);
+            })
+            .catch((err) => {
+              clearTimeout(timeoutId);
+              console.warn("Poki rewardedBreak error:", err);
+              done(false);
+            });
+        } else if (this.platform === 'crazygames' && window.CrazyGames && window.CrazyGames.SDK) {
+          this.pauseGameForAd();
+          let resolved = false;
+          const done = (success) => {
+            if (resolved) return;
+            resolved = true;
+            this.resumeGameAfterAd();
+            if (success) {
+              if (onSuccess) onSuccess();
+            } else {
+              if (onFailure) onFailure();
+            }
+          };
+
+          const timeoutId = setTimeout(() => done(false), 12000);
+
+          window.CrazyGames.SDK.ad.requestAd('rewarded', {
+            adStarted: () => {
+              clearTimeout(timeoutId);
+            },
+            adFinished: () => {
+              done(true);
+            },
+            adError: (error) => {
+              clearTimeout(timeoutId);
+              console.warn("CrazyGames rewarded ad error:", error);
+              done(false);
+            }
+          });
+        } else {
+          this.pauseGameForAd();
+          setTimeout(() => {
+            this.resumeGameAfterAd();
+            const confirmMock = confirm("Poki/CrazyGames Rewarded Ad Simulation:\nWould you like to watch this short video for a reward?");
+            if (confirmMock) {
+              if (onSuccess) onSuccess();
+            } else {
+              if (onFailure) onFailure();
+            }
+          }, 300);
+        }
+      },
+
+      pauseGameForAd() {
+        this.adActive = true;
+        const adShield = document.getElementById('adShield');
+        if (adShield) adShield.style.display = 'flex';
+
+        this.tempMuted = G.snd;
+        if (G.snd) {
+          G.snd = false;
+          try {
+            if (bgmRunning) stopBGM();
+            if (introBgmRunning) stopIntroBGM();
+            const ctx = getAC();
+            if (ctx && ctx.state === 'running') ctx.suspend();
+          } catch (e) {}
+        }
+        
+        if (GS && GS.running) {
+          GS.paused = true;
+        }
+      },
+
+      resumeGameAfterAd() {
+        this.adActive = false;
+        const adShield = document.getElementById('adShield');
+        if (adShield) adShield.style.display = 'none';
+
+        if (this.tempMuted) {
+          G.snd = true;
+          try {
+            const ctx = getAC();
+            if (ctx && ctx.state === 'suspended') ctx.resume();
+            
+            if (GS && GS.running) {
+              startBGM();
+            } else if (document.getElementById('introScreen').classList.contains('active')) {
+              startIntroBGM();
+            } else {
+              startBGM();
+            }
+          } catch (e) {}
+        }
+        
+        if (GS && GS.running) {
+          GS.paused = false;
+        }
+      }
+    };
+
+    // ===== REWARDED AD SYSTEM =====
+    function doubleCoinsWithAd() {
+      const doubleBtn = document.getElementById('doubleCoinsBtn');
+      const statusText = document.getElementById('cRewardStatus');
+      
+      if (!doubleBtn || PlatformSDK.rewardClaimedForCurrentLevel) return;
+
+      doubleBtn.disabled = true;
+      doubleBtn.textContent = 'LOADING AD...';
+      if (statusText) statusText.style.display = 'none';
+
+      PlatformSDK.requestRewardedAd(() => {
+        PlatformSDK.rewardClaimedForCurrentLevel = true;
+        doubleBtn.style.display = 'none';
+        
+        const coinAmtEl = document.getElementById('cCoinAmt');
+        if (coinAmtEl) {
+          const coinsEarned = parseInt(coinAmtEl.textContent.replace('+', '').replace(/,/g, ''));
+          if (!isNaN(coinsEarned) && coinsEarned > 0) {
+            G.coins += coinsEarned;
+            LS.s('coins', G.coins);
+            updateCoinDisplay();
+            
+            try {
+              if (sbClient && G.name) {
+                submitScore({
+                  name: G.name,
+                  score: G.score,
+                  level_reached: G.lvl,
+                  character_unlocked: LEVELS[G.lvl > 0 ? G.lvl - 1 : 0].cName,
+                  timestamp: new Date().toISOString()
+                });
+              }
+            } catch (err) {}
+            
+            coinAmtEl.textContent = '+' + (coinsEarned * 2).toLocaleString();
+            playCoinSound();
+            coinBurst(16);
+          }
+        }
+      }, () => {
+        doubleBtn.disabled = false;
+        doubleBtn.textContent = '📺 DOUBLE COINS!';
+        if (statusText) {
+          statusText.textContent = 'Ad unavailable right now.';
+          statusText.style.display = 'block';
+        }
+      });
+    }
+
+    // ===== BROWSER TAB FOCUS & LIFECYCLE =====
+    function handleVisibilityChange() {
+      if (document.hidden) {
+        pauseAudioAndGame();
+      } else {
+        resumeAudioAndGame();
+      }
+    }
+    function handleBlur() {
+      pauseAudioAndGame();
+    }
+    function handleFocus() {
+      resumeAudioAndGame();
+    }
+
+    function pauseAudioAndGame() {
+      if (PlatformSDK.adActive) return;
+      
+      try {
+        const ctx = getAC();
+        if (ctx && ctx.state === 'running') {
+          ctx.suspend();
+        }
+      } catch (e) {}
+
+      try {
+        if (goAudio) goAudio.pause();
+        if (winAudio) winAudio.pause();
+      } catch (e) {}
+
+      if (GS && GS.running && !GS.paused) {
+        GS.paused = true;
+        const pauseOvr = document.getElementById('pauseOvr');
+        if (pauseOvr) pauseOvr.classList.add('active');
+      }
+    }
+
+    function resumeAudioAndGame() {
+      if (PlatformSDK.adActive) return;
+
+      if (G.snd) {
+        try {
+          const ctx = getAC();
+          if (ctx && ctx.state === 'suspended') {
+            ctx.resume();
+          }
+        } catch (e) {}
+      }
+    }
     // Coins per level (index 0-9)
     const COINS_PER_LEVEL = [50, 75, 100, 120, 150, 180, 220, 260, 300, 500];
 
@@ -2837,6 +3201,18 @@
       }
       document.getElementById('cName').textContent = l.cName.toUpperCase();
       document.getElementById('cDesc').textContent = l.cDesc;
+
+      // Reset double coins button state
+      PlatformSDK.rewardClaimedForCurrentLevel = false;
+      const doubleBtn = document.getElementById('doubleCoinsBtn');
+      const statusText = document.getElementById('cRewardStatus');
+      if (doubleBtn) {
+        doubleBtn.disabled = false;
+        doubleBtn.textContent = '📺 DOUBLE COINS!';
+        doubleBtn.style.display = coinsEarned > 0 ? 'block' : 'none';
+      }
+      if (statusText) statusText.style.display = 'none';
+
       // Coin banner
       const banner = document.getElementById('cCoinBanner');
       if (coinsEarned > 0) {
@@ -2909,6 +3285,7 @@
       gAF = requestAnimationFrame(gameFrame);
       // Fire one-time level start alerts (staggered so they don't overlap)
       showLevelStartAlerts(idx);
+      PlatformSDK.gameplayStart();
     }
     function showLevelStartAlerts(idx) {
       const alerts = [];
@@ -3403,7 +3780,9 @@
     // End level
     function endLevel(win) {
       GS.running = false; cancelAnimationFrame(gAF);
+      PlatformSDK.gameplayStop();
       if (win) {
+        PlatformSDK.completedLevelsCount++;
         sfxWin(); G.score += GS.score;
         // Award coins for first-time completion
         const isNew = !G.done.includes(GS.level);
@@ -3418,14 +3797,18 @@
         if (next >= 10) {
           showCharModal(GS.level, () => {
             submitScore({ name: G.name, score: G.score, level_reached: 10, character_unlocked: LEVELS[9].cName, timestamp: new Date().toISOString() });
-            showEnd();
+            PlatformSDK.requestMidgameAd(() => {
+              showEnd();
+            });
           }, coinsEarned);
         } else {
           G.lvl = next; LS.s('lvl', G.lvl);
           showCharModal(GS.level, () => {
             submitScore({ name: G.name, score: G.score, level_reached: next, character_unlocked: LEVELS[GS.level].cName, timestamp: new Date().toISOString() });
-            showScreen('levelMapScreen');
-            startMapAnim();
+            PlatformSDK.requestMidgameAd(() => {
+              showScreen('levelMapScreen');
+              startMapAnim();
+            });
           }, coinsEarned);
         }
       } else {
@@ -3506,6 +3889,10 @@
     window.addEventListener('load', () => {
       G.name = LS.g('name', ''); G.lvl = LS.g('lvl', 0); G.done = LS.g('done', []);
       G.chars = LS.g('chars', []); G.score = LS.g('score', 0); G.coins = LS.g('coins', 0); G.snd = LS.g('snd', true); G.t0 = Date.now();
+      
+      // Initialize Platform SDK
+      PlatformSDK.init();
+
       initGachaState();
       if (G.name) document.getElementById('nameInput').value = G.name;
       showScreen('homeScreen'); loadHomeLb();
@@ -3514,6 +3901,11 @@
       document.addEventListener('click', () => { if (!bgmRunning && G.snd) startBGM(); }, { once: true });
       document.addEventListener('keydown', () => { if (!bgmRunning && G.snd) startBGM(); }, { once: true });
       document.addEventListener('touchstart', () => { if (!bgmRunning && G.snd) startBGM(); }, { once: true });
+
+      // Tab visibility & focus handlers
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      window.addEventListener('blur', handleBlur);
+      window.addEventListener('focus', handleFocus);
     });
 
     window.addEventListener('resize', () => {
