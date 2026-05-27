@@ -3573,10 +3573,15 @@
           });
         }
 
-        if (GS.growth >= GS.maxG) endLevel(true);
       }
     }
-    function updateGB() { document.getElementById('gbFill').style.width = (GS.growth / GS.maxG * 100) + '%'; }
+    function updateGB() {
+      const pct = (GS.growth / GS.maxG * 100);
+      document.getElementById('gbFill').style.width = pct + '%';
+      if (GS.growth >= GS.maxG && GS.running) {
+        endLevel(true);
+      }
+    }
 
     function draw(W, H, l) {
       const ctx = gX; ctx.clearRect(0, 0, W, H);
@@ -3788,6 +3793,7 @@
 
     // End level
     function endLevel(win) {
+      if (!GS.running) return;
       GS.running = false; cancelAnimationFrame(gAF);
       PlatformSDK.gameplayStop();
       if (win) {
