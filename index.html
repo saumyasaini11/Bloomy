@@ -1925,7 +1925,6 @@
       
       <div class="narration-box">
         <div id="narration1" class="narration-text"></div>
-        <button id="nextBtn1" class="intro-next-btn" onclick="panelManagerInstance.handleNextClick()">NEXT ➔</button>
       </div>
     </div>
 
@@ -1950,7 +1949,6 @@
 
       <div class="narration-box">
         <div id="narration2" class="narration-text"></div>
-        <button id="nextBtn2" class="intro-next-btn" onclick="panelManagerInstance.handleNextClick()">NEXT ➔</button>
       </div>
     </div>
 
@@ -1969,7 +1967,6 @@
         <div class="split-right">
           <div class="narration-box" style="width:90%; min-height:220px; margin-bottom:0; background:rgba(10, 5, 20, 0.95);">
             <div id="narration3" class="narration-text"></div>
-            <button id="nextBtn3" class="intro-next-btn" onclick="panelManagerInstance.handleNextClick()">NEXT ➔</button>
           </div>
         </div>
       </div>
@@ -1994,7 +1991,6 @@
           ✨ "The curse can only be broken by a Champion..."<br>
           "...one who completes the 10 Sacred Trials of the Garden." ✨
         </div>
-        <button id="nextBtn4" class="intro-next-btn" onclick="panelManagerInstance.handleNextClick()">NEXT ➔</button>
       </div>
     </div>
 
@@ -2011,7 +2007,6 @@
 
       <div class="narration-box" style="background: rgba(14, 10, 24, 0.65); border-color: rgba(26, 26, 46, 0.8); text-align: center; max-width: 680px;">
         <div id="narration5" class="narration-text" style="font-size: 11px;"></div>
-        <button id="nextBtn5" class="intro-next-btn" style="margin: 10px auto 0; display: none;" onclick="panelManagerInstance.handleNextClick()">NEXT ➔</button>
         <div id="actionButtons" class="action-buttons">
           <button class="btn-ready" onclick="onIntroDone()">🌱 I AM READY</button>
           <button class="btn-skip-text" onclick="onIntroDone()">Skip Story</button>
@@ -4074,7 +4069,6 @@
     class PanelManager {
       constructor() {
         this.currentPanel = 0;
-        this.currentStep = 0;
         this.panels = [
           document.getElementById('panel1'),
           document.getElementById('panel2'),
@@ -4083,38 +4077,50 @@
           document.getElementById('panel5')
         ];
         this.typewriterTimeout = null;
-        this.panelTimeout = null;
+        this.activeTimeouts = [];
+        this.aborted = false;
         this.canvases = {
           golden: { id: 'goldenCanvas', ctx: null, animId: null, particles: [] },
           star: { id: 'starCanvas', ctx: null, animId: null, stars: [] }
         };
       }
 
+      setTimeout(callback, delay) {
+        const id = setTimeout(() => {
+          this.activeTimeouts = this.activeTimeouts.filter(t => t !== id);
+          if (!this.aborted) {
+            callback();
+          }
+        }, delay);
+        this.activeTimeouts.push(id);
+        return id;
+      }
+
+      clearAllTimeouts() {
+        this.activeTimeouts.forEach(id => clearTimeout(id));
+        this.activeTimeouts = [];
+        if (this.typewriterTimeout) {
+          clearTimeout(this.typewriterTimeout);
+          this.typewriterTimeout = null;
+        }
+      }
+
+      wait(ms) {
+        return new Promise((resolve) => {
+          this.setTimeout(resolve, ms);
+        });
+      }
+
       showPanel(index) {
-        // Clear active timeouts
-        if (this.typewriterTimeout) clearTimeout(this.typewriterTimeout);
-        if (this.panelTimeout) clearTimeout(this.panelTimeout);
-
-        // Stop active canvas animations
-        this.stopCanvases();
-
-        // Bounds check
+        if (this.aborted) return;
         if (index < 0 || index >= this.panels.length) return;
 
         const fromPanel = this.panels[this.currentPanel];
         const toPanel = this.panels[index];
 
         this.currentPanel = index;
-        this.currentStep = 0; // Reset step index for the panel
+        this.stopCanvases();
 
-        // Fade transition
-        this.fadeTransition(fromPanel, toPanel, 800);
-
-        // Trigger specific panel timeline
-        this.initPanelTimeline(index);
-      }
-
-      fadeTransition(fromPanel, toPanel, duration) {
         this.panels.forEach(p => {
           if (p !== toPanel) {
             p.classList.remove('active');
@@ -4134,277 +4140,224 @@
         }
       }
 
-      typewriterEffect(element, text, speed, append = false, onDone) {
-        if (!append) element.innerHTML = '';
-        let i = 0;
-        const self = this;
-
-        // Dynamic player name replacement logic
-        const pName = localStorage.getItem('bloomyPlayerName') || (typeof G !== 'undefined' && G.name) || (typeof LS !== 'undefined' && LS.g('name', ''));
-        let processedText = text;
-        if (pName) {
-          processedText = text.replace(/YOU/g, pName.toUpperCase());
-        }
-
-        function type() {
-          if (i < processedText.length) {
-            element.innerHTML += processedText.charAt(i);
-            i++;
-            
-            // Play retro click sound
-            if (typeof G !== 'undefined' && G.snd && i % 2 === 0) {
-              tone(120 + Math.random() * 40, 'sine', 0.03, 0.05);
-            }
-            
-            let delay = speed;
-            const char = processedText.charAt(i - 1);
-            if (char === '.' || char === '!' || char === '?') {
-              delay = speed * 10; // Pause at punctuation
-            } else if (char === ',') {
-              delay = speed * 5;
-            }
-
-            self.typewriterTimeout = setTimeout(type, delay);
-          } else {
-            if (onDone) onDone();
+      typewriterEffect(element, text, speed, append = false) {
+        return new Promise((resolve) => {
+          if (this.aborted) {
+            resolve();
+            return;
           }
-        }
+          if (!append) element.innerHTML = '';
+          let i = 0;
 
-        type();
-      }
-
-      hideNextButtons() {
-        for (let i = 1; i <= 5; i++) {
-          const btn = document.getElementById('nextBtn' + i);
-          if (btn) btn.style.display = 'none';
-        }
-      }
-
-      handleNextClick() {
-        if (this.typewriterTimeout) clearTimeout(this.typewriterTimeout);
-        this.hideNextButtons();
-
-        this.currentStep++;
-        this.processStep();
-      }
-
-      initPanelTimeline(index) {
-        this.hideNextButtons();
-
-        if (index === 0) {
-          // PANEL 1: The Golden Age
-          const text1 = "Long ago, this land was known as the Garden of Eden...";
-          const el = document.getElementById('narration1');
-          
-          this.startGoldenCanvas();
-
-          this.typewriterEffect(el, text1, 40, false, () => {
-            const btn = document.getElementById('nextBtn1');
-            if (btn) btn.style.display = 'block';
-          });
-        } else if (index === 1) {
-          // PANEL 2: The Curse Falls
-          const el = document.getElementById('narration2');
-          const witch = document.getElementById('witchSilhouette');
-
-          // Trigger lightning flash
-          const overlay = document.getElementById('lightningOverlay');
-          if (overlay) {
-            overlay.classList.add('lightning-flash');
-            tone(80, 'sawtooth', 0.3, 0.3);
-            setTimeout(() => tone(65, 'sawtooth', 0.4, 0.25, 0.1), 150);
-            
-            setTimeout(() => {
-              overlay.classList.remove('lightning-flash');
-            }, 600);
+          const pName = localStorage.getItem('bloomyPlayerName') || (typeof G !== 'undefined' && G.name) || (typeof LS !== 'undefined' && LS.g('name', ''));
+          let processedText = text;
+          if (pName) {
+            processedText = text.replace(/YOU/g, pName.toUpperCase());
           }
 
-          // Fade in witch silhouette
-          setTimeout(() => {
-            if (witch) witch.classList.add('visible');
-            const fallback = document.querySelector('.witch-container .witch-fallback');
-            if (fallback) {
-              fallback.style.opacity = '0.65';
-              fallback.style.animation = 'witchFallbackPulse 2s ease-in-out infinite alternate';
+          const type = () => {
+            if (this.aborted) {
+              resolve();
+              return;
             }
-          }, 500);
+            if (i < processedText.length) {
+              element.innerHTML += processedText.charAt(i);
+              i++;
 
-          const text1 = "But one dark night... a witch arrived.";
-          this.typewriterEffect(el, text1, 40, false, () => {
-            const btn = document.getElementById('nextBtn2');
-            if (btn) btn.style.display = 'block';
-          });
-        } else if (index === 2) {
-          // PANEL 3: Many Tried. All Failed.
-          // Reset Red Xs
-          const x1 = document.getElementById('redX1');
-          const x2 = document.getElementById('redX2');
-          const x3 = document.getElementById('redX3');
-          if (x1) x1.classList.remove('appear');
-          if (x2) x2.classList.remove('appear');
-          if (x3) x3.classList.remove('appear');
-
-          const el = document.getElementById('narration3');
-          const text1 = "Many brave souls answered the call.";
-
-          this.typewriterEffect(el, text1, 40, false, () => {
-            const btn = document.getElementById('nextBtn3');
-            if (btn) btn.style.display = 'block';
-          });
-        } else if (index === 3) {
-          // PANEL 4: The Healer Arrives
-          const el = document.getElementById('narration4');
-          const quote = document.getElementById('spokenQuote');
-          const healerBg = document.getElementById('healerBg');
-          
-          if (healerBg) healerBg.classList.add('entered');
-          if (quote) quote.classList.remove('visible');
-
-          const text1 = "Then... she came.";
-
-          this.typewriterEffect(el, text1, 40, false, () => {
-            const btn = document.getElementById('nextBtn4');
-            if (btn) btn.style.display = 'block';
-          });
-        } else if (index === 4) {
-          // PANEL 5: The Call to Action
-          const el = document.getElementById('narration5');
-          const btns = document.getElementById('actionButtons');
-          if (btns) btns.classList.remove('visible');
-          
-          this.startStarCanvas();
-
-          const text1 = "The village waits.";
-          this.typewriterEffect(el, text1, 40, false, () => {
-            const btn = document.getElementById('nextBtn5');
-            if (btn) btn.style.display = 'block';
-          });
-        }
-      }
-
-      processStep() {
-        if (this.currentPanel === 0) {
-          const el = document.getElementById('narration1');
-          if (this.currentStep === 1) {
-            const text2 = "\nA village where flowers and farming brought joy, life, and prosperity to all.";
-            this.typewriterEffect(el, text2, 40, true, () => {
-              const btn = document.getElementById('nextBtn1');
-              if (btn) btn.style.display = 'block';
-            });
-          } else if (this.currentStep === 2) {
-            this.showPanel(1);
-          }
-        } else if (this.currentPanel === 1) {
-          const el = document.getElementById('narration2');
-          if (this.currentStep === 1) {
-            const text2 = "\nShe cursed the land — summoning an endless plague of insects.";
-            this.typewriterEffect(el, text2, 40, true, () => {
-              const btn = document.getElementById('nextBtn2');
-              if (btn) btn.style.display = 'block';
-            });
-          } else if (this.currentStep === 2) {
-            const text3 = "\nCrops withered. Flowers died. The village fell silent.";
-            this.typewriterEffect(el, text3, 40, true, () => {
-              const btn = document.getElementById('nextBtn2');
-              if (btn) btn.style.display = 'block';
-            });
-          } else if (this.currentStep === 3) {
-            this.showPanel(2);
-          }
-        } else if (this.currentPanel === 2) {
-          const el = document.getElementById('narration3');
-          if (this.currentStep === 1) {
-            const x1 = document.getElementById('redX1');
-            if (x1) {
-              x1.classList.add('appear');
-              tone(150, 'sawtooth', 0.1, 0.2);
-            }
-            const text2 = "\n\nWarriors. Mages. Farmers.";
-            this.typewriterEffect(el, text2, 40, true, () => {
-              const btn = document.getElementById('nextBtn3');
-              if (btn) btn.style.display = 'block';
-            });
-          } else if (this.currentStep === 2) {
-            const x2 = document.getElementById('redX2');
-            if (x2) {
-              x2.classList.add('appear');
-              tone(130, 'sawtooth', 0.1, 0.2);
-            }
-            const text3 = "\n\nNone could break the witch's hold.";
-            this.typewriterEffect(el, text3, 40, true, () => {
-              const btn = document.getElementById('nextBtn3');
-              if (btn) btn.style.display = 'block';
-            });
-          } else if (this.currentStep === 3) {
-            const x3 = document.getElementById('redX3');
-            if (x3) {
-              x3.classList.add('appear');
-              tone(110, 'sawtooth', 0.15, 0.2);
-            }
-            const text4 = "\n\nYears passed... and hope faded.";
-            this.typewriterEffect(el, text4, 40, true, () => {
-              const btn = document.getElementById('nextBtn3');
-              if (btn) btn.style.display = 'block';
-            });
-          } else if (this.currentStep === 4) {
-            this.showPanel(3);
-          }
-        } else if (this.currentPanel === 3) {
-          const el = document.getElementById('narration4');
-          if (this.currentStep === 1) {
-            const text2 = "\nA healer. Ancient in wisdom, gentle in power.";
-            this.typewriterEffect(el, text2, 40, true, () => {
-              const btn = document.getElementById('nextBtn4');
-              if (btn) btn.style.display = 'block';
-            });
-          } else if (this.currentStep === 2) {
-            const text3 = "\nShe studied the curse and spoke words that sparked a new hope:";
-            this.typewriterEffect(el, text3, 40, true, () => {
-              const btn = document.getElementById('nextBtn4');
-              if (btn) btn.style.display = 'block';
-            });
-          } else if (this.currentStep === 3) {
-            const quote = document.getElementById('spokenQuote');
-            if (quote) {
-              quote.classList.add('visible');
-              tone(523, 'sine', 0.2, 0.15);
-              tone(659, 'sine', 0.2, 0.15, 0.1);
-              tone(784, 'sine', 0.3, 0.15, 0.2);
-              tone(1047, 'sine', 0.4, 0.15, 0.3);
-            }
-            this.typewriterTimeout = setTimeout(() => {
-              const btn = document.getElementById('nextBtn4');
-              if (btn) btn.style.display = 'block';
-            }, 1000);
-          } else if (this.currentStep === 4) {
-            this.showPanel(4);
-          }
-        } else if (this.currentPanel === 4) {
-          const el = document.getElementById('narration5');
-          if (this.currentStep === 1) {
-            const text2 = "\nThe flowers are dying.";
-            this.typewriterEffect(el, text2, 40, true, () => {
-              const btn = document.getElementById('nextBtn5');
-              if (btn) btn.style.display = 'block';
-            });
-          } else if (this.currentStep === 2) {
-            const text3 = "\nOnly YOU can complete the 10 Trials and break the curse.";
-            this.typewriterEffect(el, text3, 40, true, () => {
-              const btn = document.getElementById('nextBtn5');
-              if (btn) btn.style.display = 'block';
-            });
-          } else if (this.currentStep === 3) {
-            const text4 = "\nAre you ready to save the Garden of Eden?";
-            this.typewriterEffect(el, text4, 40, true, () => {
-              const btns = document.getElementById('actionButtons');
-              if (btns) {
-                btns.classList.add('visible');
-                tone(523, 'triangle', 0.15, 0.2);
-                tone(784, 'triangle', 0.3, 0.2, 0.1);
+              if (typeof G !== 'undefined' && G.snd && i % 2 === 0) {
+                tone(120 + Math.random() * 40, 'sine', 0.03, 0.05);
               }
-            });
-          }
+
+              let delay = speed;
+              const char = processedText.charAt(i - 1);
+              if (char === '.' || char === '!' || char === '?') {
+                delay = speed * 6;
+              } else if (char === ',') {
+                delay = speed * 3;
+              }
+
+              this.typewriterTimeout = setTimeout(type, delay);
+            } else {
+              resolve();
+            }
+          };
+
+          type();
+        });
+      }
+
+      async runCinematic() {
+        this.aborted = false;
+        this.clearAllTimeouts();
+
+        // --- PANEL 1: The Golden Age ---
+        if (this.aborted) return;
+        this.showPanel(0);
+        this.startGoldenCanvas();
+        const narration1 = document.getElementById('narration1');
+        
+        await this.typewriterEffect(narration1, "Long ago, this land was known as the Garden of Eden...", 20, false);
+        if (this.aborted) return;
+        await this.wait(1000);
+        if (this.aborted) return;
+
+        await this.typewriterEffect(narration1, "\nA village where flowers and farming brought joy, life, and prosperity to all.", 20, true);
+        if (this.aborted) return;
+        await this.wait(1500);
+        if (this.aborted) return;
+
+        // --- PANEL 2: The Curse Falls ---
+        this.showPanel(1);
+        const narration2 = document.getElementById('narration2');
+        const witch = document.getElementById('witchSilhouette');
+
+        const overlay = document.getElementById('lightningOverlay');
+        if (overlay) {
+          overlay.classList.add('lightning-flash');
+          tone(80, 'sawtooth', 0.3, 0.3);
+          this.setTimeout(() => tone(65, 'sawtooth', 0.4, 0.25, 0.1), 150);
+          
+          this.setTimeout(() => {
+            overlay.classList.remove('lightning-flash');
+          }, 600);
         }
+
+        this.setTimeout(() => {
+          if (this.aborted) return;
+          if (witch) witch.classList.add('visible');
+          const fallback = document.querySelector('.witch-container .witch-fallback');
+          if (fallback) {
+            fallback.style.opacity = '0.65';
+            fallback.style.animation = 'witchFallbackPulse 2s ease-in-out infinite alternate';
+          }
+        }, 500);
+
+        await this.typewriterEffect(narration2, "But one dark night... a witch arrived.", 20, false);
+        if (this.aborted) return;
+        await this.wait(1000);
+        if (this.aborted) return;
+
+        await this.typewriterEffect(narration2, "\nShe cursed the land — summoning an endless plague of insects.", 20, true);
+        if (this.aborted) return;
+        await this.wait(1000);
+        if (this.aborted) return;
+
+        await this.typewriterEffect(narration2, "\nCrops withered. Flowers died. The village fell silent.", 20, true);
+        if (this.aborted) return;
+        await this.wait(1500);
+        if (this.aborted) return;
+
+        // --- PANEL 3: Many Tried. All Failed. ---
+        this.showPanel(2);
+        const narration3 = document.getElementById('narration3');
+        const x1 = document.getElementById('redX1');
+        const x2 = document.getElementById('redX2');
+        const x3 = document.getElementById('redX3');
+        if (x1) x1.classList.remove('appear');
+        if (x2) x2.classList.remove('appear');
+        if (x3) x3.classList.remove('appear');
+
+        await this.typewriterEffect(narration3, "Many brave souls answered the call.", 20, false);
+        if (this.aborted) return;
+        await this.wait(800);
+        if (this.aborted) return;
+
+        if (x1) {
+          x1.classList.add('appear');
+          tone(150, 'sawtooth', 0.1, 0.2);
+        }
+        await this.typewriterEffect(narration3, "\n\nWarriors. Mages. Farmers.", 20, true);
+        if (this.aborted) return;
+        await this.wait(800);
+        if (this.aborted) return;
+
+        if (x2) {
+          x2.classList.add('appear');
+          tone(130, 'sawtooth', 0.1, 0.2);
+        }
+        await this.typewriterEffect(narration3, "\n\nNone could break the witch's hold.", 20, true);
+        if (this.aborted) return;
+        await this.wait(800);
+        if (this.aborted) return;
+
+        if (x3) {
+          x3.classList.add('appear');
+          tone(110, 'sawtooth', 0.15, 0.2);
+        }
+        await this.typewriterEffect(narration3, "\n\nYears passed... and hope faded.", 20, true);
+        if (this.aborted) return;
+        await this.wait(1500);
+        if (this.aborted) return;
+
+        // --- PANEL 4: The Healer Arrives ---
+        this.showPanel(3);
+        const narration4 = document.getElementById('narration4');
+        const quote = document.getElementById('spokenQuote');
+        const healerBg = document.getElementById('healerBg');
+        if (healerBg) healerBg.classList.add('entered');
+        if (quote) quote.classList.remove('visible');
+
+        await this.typewriterEffect(narration4, "Then... she came.", 20, false);
+        if (this.aborted) return;
+        await this.wait(800);
+        if (this.aborted) return;
+
+        await this.typewriterEffect(narration4, "\nA healer. Ancient in wisdom, gentle in power.", 20, true);
+        if (this.aborted) return;
+        await this.wait(1000);
+        if (this.aborted) return;
+
+        await this.typewriterEffect(narration4, "\nShe studied the curse and spoke words that sparked a new hope:", 20, true);
+        if (this.aborted) return;
+        await this.wait(800);
+        if (this.aborted) return;
+
+        if (quote) {
+          quote.classList.add('visible');
+          tone(523, 'sine', 0.2, 0.15);
+          tone(659, 'sine', 0.2, 0.15, 0.1);
+          tone(784, 'sine', 0.3, 0.15, 0.2);
+          tone(1047, 'sine', 0.4, 0.15, 0.3);
+        }
+        await this.wait(2200);
+        if (this.aborted) return;
+
+        // --- PANEL 5: The Call to Action ---
+        this.showPanel(4);
+        const narration5 = document.getElementById('narration5');
+        const btns = document.getElementById('actionButtons');
+        if (btns) btns.classList.remove('visible');
+        this.startStarCanvas();
+
+        await this.typewriterEffect(narration5, "The village waits.", 20, false);
+        if (this.aborted) return;
+        await this.wait(800);
+        if (this.aborted) return;
+
+        await this.typewriterEffect(narration5, "\nThe flowers are dying.", 20, true);
+        if (this.aborted) return;
+        await this.wait(800);
+        if (this.aborted) return;
+
+        await this.typewriterEffect(narration5, "\nOnly YOU can complete the 10 Trials and break the curse.", 20, true);
+        if (this.aborted) return;
+        await this.wait(1000);
+        if (this.aborted) return;
+
+        await this.typewriterEffect(narration5, "\nAre you ready to save the Garden of Eden?", 20, true);
+        if (this.aborted) return;
+
+        if (btns) {
+          btns.classList.add('visible');
+          tone(523, 'triangle', 0.15, 0.2);
+          tone(784, 'triangle', 0.3, 0.2, 0.1);
+        }
+      }
+
+      abort() {
+        this.aborted = true;
+        this.clearAllTimeouts();
+        this.stopCanvases();
       }
 
       startGoldenCanvas() {
@@ -4512,13 +4465,13 @@
       }
 
       resetIntroElements();
-      panelManagerInstance.showPanel(0);
+      panelManagerInstance.runCinematic();
     }
 
     function onIntroDone() {
       stopIntroBGM();
       if (panelManagerInstance) {
-        panelManagerInstance.stopCanvases();
+        panelManagerInstance.abort();
       }
       showScreen('levelMapScreen');
     }
@@ -4528,19 +4481,6 @@
     }
 
     function resetIntroElements() {
-      // Reset Next buttons
-      const btn1 = document.getElementById('nextBtn1');
-      const btn2 = document.getElementById('nextBtn2');
-      const btn3 = document.getElementById('nextBtn3');
-      const btn4 = document.getElementById('nextBtn4');
-      const btn5 = document.getElementById('nextBtn5');
-      if (btn1) btn1.style.display = 'none';
-      if (btn2) btn2.style.display = 'none';
-      if (btn3) btn3.style.display = 'none';
-      if (btn4) btn4.style.display = 'none';
-      if (btn5) btn5.style.display = 'none';
-
-      // Reset witch state
       const witch = document.getElementById('witchSilhouette');
       if (witch) witch.classList.remove('visible');
       const witchFallback = document.querySelector('.witch-container .witch-fallback');
@@ -4549,29 +4489,26 @@
         witchFallback.style.animation = 'none';
       }
 
-      // Reset Red Xs
-      document.getElementById('redX1').classList.remove('appear');
-      document.getElementById('redX2').classList.remove('appear');
-      document.getElementById('redX3').classList.remove('appear');
+      const x1 = document.getElementById('redX1');
+      const x2 = document.getElementById('redX2');
+      const x3 = document.getElementById('redX3');
+      if (x1) x1.classList.remove('appear');
+      if (x2) x2.classList.remove('appear');
+      if (x3) x3.classList.remove('appear');
 
-      // Reset healer
       const healerBg = document.getElementById('healerBg');
       if (healerBg) healerBg.classList.remove('entered');
 
-      // Reset spoken quote
       const quote = document.getElementById('spokenQuote');
       if (quote) quote.classList.remove('visible');
 
-      // Reset action buttons
       const btns = document.getElementById('actionButtons');
       if (btns) btns.classList.remove('visible');
 
-      // Clear narrations
-      document.getElementById('narration1').innerHTML = '';
-      document.getElementById('narration2').innerHTML = '';
-      document.getElementById('narration3').innerHTML = '';
-      document.getElementById('narration4').innerHTML = '';
-      document.getElementById('narration5').innerHTML = '';
+      for (let i = 1; i <= 5; i++) {
+        const el = document.getElementById('narration' + i);
+        if (el) el.innerHTML = '';
+      }
     }
 
     // Single global ResizeObserver to prevent memory leak
