@@ -3199,8 +3199,10 @@
     // ===== CHAR MODAL =====
     let afterChar = null;
     function showCharModal(idx, cb, coinsEarned = 0) {
+      console.log('[showCharModal] idx=', idx, 'coinsEarned=', coinsEarned);
       afterChar = cb;
       const l = LEVELS[idx];
+      console.log('[showCharModal] level data=', l ? l.cName : 'UNDEFINED!');
       const face = document.getElementById('cFace');
       if (l.charImg) {
         face.innerHTML = `<img src="${l.charImg}" style="width:100%;height:100%;object-fit:contain;border-radius:8px;" alt="${l.cName}">`;
@@ -3231,8 +3233,10 @@
       } else {
         banner.style.display = 'none';
       }
+      console.log('[showCharModal] adding active class to charModal');
       document.getElementById('charModal').classList.add('active');
       sfxWin();
+      console.log('[showCharModal] done — modal should now be visible');
     }
     function closeCharModal() {
       document.getElementById('charModal').classList.remove('active');
@@ -3579,6 +3583,7 @@
       const pct = (GS.growth / GS.maxG * 100);
       document.getElementById('gbFill').style.width = pct + '%';
       if (GS.growth >= GS.maxG && GS.running) {
+        console.log('[updateGB] WIN condition met! growth=', GS.growth, 'maxG=', GS.maxG, '— calling endLevel(true)');
         endLevel(true);
       }
     }
@@ -3793,44 +3798,55 @@
 
     // End level
     function endLevel(win) {
-      if (!GS.running) return;
+      console.log('[endLevel] called win=', win, 'GS.running=', GS.running, 'GS.level=', GS.level);
+      if (!GS.running) { console.log('[endLevel] early return — not running'); return; }
       GS.running = false; cancelAnimationFrame(gAF);
-      PlatformSDK.gameplayStop();
+      try { PlatformSDK.gameplayStop(); } catch(e) { console.warn('[endLevel] gameplayStop error', e); }
       if (win) {
-        PlatformSDK.completedLevelsCount++;
-        sfxWin(); G.score += GS.score;
-        // Award coins for first-time completion
-        const isNew = !G.done.includes(GS.level);
-        const coinsEarned = isNew ? COINS_PER_LEVEL[GS.level] : Math.floor(COINS_PER_LEVEL[GS.level] * .25);
-        G.coins += coinsEarned;
-        LS.s('coins', G.coins);
-        updateCoinDisplay();
-        if (!G.done.includes(GS.level)) G.done.push(GS.level);
-        if (!G.chars.includes(GS.level)) G.chars.push(GS.level);
-        LS.s('done', G.done); LS.s('chars', G.chars); LS.s('score', G.score);
-        const next = GS.level + 1;
-        if (next >= 10) {
-          showCharModal(GS.level, () => {
-            submitScore({ name: G.name, score: G.score, level_reached: 10, character_unlocked: LEVELS[9].cName, timestamp: new Date().toISOString() });
-            PlatformSDK.requestMidgameAd(() => {
-              showEnd();
-            });
-          }, coinsEarned);
-        } else {
-          G.lvl = next; LS.s('lvl', G.lvl);
-          showCharModal(GS.level, () => {
-            submitScore({ name: G.name, score: G.score, level_reached: next, character_unlocked: LEVELS[GS.level].cName, timestamp: new Date().toISOString() });
-            PlatformSDK.requestMidgameAd(() => {
-              showScreen('levelMapScreen');
-              startMapAnim();
-            });
-          }, coinsEarned);
+        try {
+          PlatformSDK.completedLevelsCount++;
+          sfxWin(); G.score += GS.score;
+          // Award coins for first-time completion
+          const isNew = !G.done.includes(GS.level);
+          const coinsEarned = isNew ? COINS_PER_LEVEL[GS.level] : Math.floor(COINS_PER_LEVEL[GS.level] * .25);
+          console.log('[endLevel] win! level=', GS.level, 'coinsEarned=', coinsEarned, 'isNew=', isNew);
+          G.coins += coinsEarned;
+          LS.s('coins', G.coins);
+          updateCoinDisplay();
+          if (!G.done.includes(GS.level)) G.done.push(GS.level);
+          if (!G.chars.includes(GS.level)) G.chars.push(GS.level);
+          LS.s('done', G.done); LS.s('chars', G.chars); LS.s('score', G.score);
+          const next = GS.level + 1;
+          console.log('[endLevel] next level=', next, '— calling showCharModal');
+          if (next >= 10) {
+            showCharModal(GS.level, () => {
+              submitScore({ name: G.name, score: G.score, level_reached: 10, character_unlocked: LEVELS[9].cName, timestamp: new Date().toISOString() });
+              PlatformSDK.requestMidgameAd(() => {
+                showEnd();
+              });
+            }, coinsEarned);
+          } else {
+            G.lvl = next; LS.s('lvl', G.lvl);
+            showCharModal(GS.level, () => {
+              submitScore({ name: G.name, score: G.score, level_reached: next, character_unlocked: LEVELS[GS.level].cName, timestamp: new Date().toISOString() });
+              PlatformSDK.requestMidgameAd(() => {
+                showScreen('levelMapScreen');
+                startMapAnim();
+              });
+            }, coinsEarned);
+          }
+        } catch(e) {
+          console.error('[endLevel] WIN path error:', e);
+          // Fallback: force show level map so the player is not stuck
+          try { showScreen('levelMapScreen'); startMapAnim(); } catch(e2) {}
         }
       } else {
-        sfxFail(); playGOSound(); showRGif('judge');
-        document.getElementById('goScore').textContent = `Score: ${GS.score.toLocaleString()}`;
-        document.getElementById('goMsg').textContent = `You reached ${Math.round(GS.growth / 10)}% growth. Keep going!`;
-        document.getElementById('goOvr').classList.add('active');
+        try {
+          sfxFail(); playGOSound(); showRGif('judge');
+          document.getElementById('goScore').textContent = `Score: ${GS.score.toLocaleString()}`;
+          document.getElementById('goMsg').textContent = `You reached ${Math.round(GS.growth / 10)}% growth. Keep going!`;
+          document.getElementById('goOvr').classList.add('active');
+        } catch(e) { console.error('[endLevel] LOSE path error:', e); }
       }
     }
     function retryLvl() { document.getElementById('goOvr').classList.remove('active'); startLevel(GS.level); }
