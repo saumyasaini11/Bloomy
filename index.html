@@ -2971,12 +2971,26 @@
     }
 
     // ===== HOME =====
+    function resetGameData() {
+      G.lvl = 0; G.done = []; G.chars = []; G.score = 0; G.coins = 0; G.claimedCapsules = [];
+      G.unlockedChars = ['🌱']; G.unlockedPots = ['clay']; G.eqChar = '🌱'; G.eqPot = 'clay';
+      LS.s('lvl', 0); LS.s('done', []); LS.s('chars', []); LS.s('score', 0); LS.s('coins', 0); LS.s('claimedCapsules', []);
+      saveGachaState();
+    }
+
     function startGame() {
       const inp = document.getElementById('nameInput');
       const n = inp.value.trim();
       if (!n) { inp.style.boxShadow = '0 0 0 4px #E74C3C,3px 3px 0 var(--border)'; inp.focus(); return; }
       inp.style.boxShadow = '';
-      G.name = n.toUpperCase(); G.t0 = Date.now();
+      
+      const newName = n.toUpperCase();
+      const prevName = (LS.g('name', '') || '').toUpperCase();
+      if (newName !== prevName) {
+        resetGameData();
+      }
+      
+      G.name = newName; G.t0 = Date.now();
       LS.s('name', G.name); sfxClick();
       IntroAudioEngine.init();
       showScreen('introScreen');
@@ -3860,10 +3874,8 @@
       else navigator.clipboard.writeText(txt).then(() => alert('Score copied! 🌸')).catch(() => alert(txt));
     }
     function resetGame() {
-      sfxClick(); G.lvl = 0; G.done = []; G.chars = []; G.score = 0; G.t0 = Date.now(); G.coins = 0; G.claimedCapsules = [];
-      G.unlockedChars = ['🌱']; G.unlockedPots = ['clay']; G.eqChar = '🌱'; G.eqPot = 'clay';
-      LS.s('lvl', 0); LS.s('done', []); LS.s('chars', []); LS.s('score', 0); LS.s('coins', 0); LS.s('claimedCapsules', []);
-      saveGachaState();
+      sfxClick();
+      resetGameData();
       showScreen('homeScreen');
     }
 
