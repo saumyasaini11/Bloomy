@@ -2366,10 +2366,10 @@
       completedLevelsCount: 0,
       rewardClaimedForCurrentLevel: false,
       tempMuted: false,
+      cgInitialized: false,
 
       init() {
         this.detectPlatform();
-        console.log(`Detected platform: ${this.platform}`);
         if (this.platform === 'poki') {
           this.initPoki();
         } else if (this.platform === 'crazygames') {
@@ -2396,23 +2396,34 @@
       initPoki() {
         if (typeof PokiSDK !== 'undefined') {
           PokiSDK.init().then(() => {
-            console.log("Poki SDK initialized successfully.");
+            console.log('[Bloomy] Poki SDK ready.');
           }).catch(() => {
-            console.warn("Poki SDK failed to initialize or adblocker detected.");
+            console.warn('[Bloomy] Poki SDK failed or adblocker active.');
           });
         }
       },
 
       initCrazyGames() {
         if (window.CrazyGames && window.CrazyGames.SDK) {
-          console.log("CrazyGames SDK initialized successfully.");
+          CrazyGames.SDK.init().then(() => {
+            this.cgInitialized = true;
+            console.log('[Bloomy] CrazyGames SDK ready.');
+          }).catch(e => {
+            console.warn('[Bloomy] CrazyGames SDK init failed:', e);
+          });
+        }
+      },
+
+      happytime() {
+        if (this.platform === 'crazygames' && this.cgInitialized && window.CrazyGames && window.CrazyGames.SDK) {
+          try { CrazyGames.SDK.game.happytime(); } catch(e) {}
         }
       },
 
       gameplayStart() {
         if (this.platform === 'poki' && typeof PokiSDK !== 'undefined') {
           PokiSDK.gameplayStart();
-        } else if (this.platform === 'crazygames' && window.CrazyGames && window.CrazyGames.SDK) {
+        } else if (this.platform === 'crazygames' && this.cgInitialized && window.CrazyGames && window.CrazyGames.SDK) {
           window.CrazyGames.SDK.game.gameplayStart();
         }
       },
@@ -2420,8 +2431,8 @@
       gameplayStop() {
         if (this.platform === 'poki' && typeof PokiSDK !== 'undefined') {
           PokiSDK.gameplayStop();
-        } else if (this.platform === 'crazygames' && window.CrazyGames && window.CrazyGames.SDK) {
-          window.CrazyGames.SDK.game.gameplayStop();
+        } else if (this.platform === 'crazygames' && this.cgInitialized && window.CrazyGames && window.CrazyGames.SDK) {
+          try { window.CrazyGames.SDK.game.gameplayStop(); } catch(e) {}
         }
       },
 
@@ -3199,10 +3210,8 @@
     // ===== CHAR MODAL =====
     let afterChar = null;
     function showCharModal(idx, cb, coinsEarned = 0) {
-      console.log('[showCharModal] idx=', idx, 'coinsEarned=', coinsEarned);
       afterChar = cb;
       const l = LEVELS[idx];
-      console.log('[showCharModal] level data=', l ? l.cName : 'UNDEFINED!');
       const face = document.getElementById('cFace');
       if (l.charImg) {
         face.innerHTML = `<img src="${l.charImg}" style="width:100%;height:100%;object-fit:contain;border-radius:8px;" alt="${l.cName}">`;
@@ -3233,10 +3242,10 @@
       } else {
         banner.style.display = 'none';
       }
-      console.log('[showCharModal] adding active class to charModal');
       document.getElementById('charModal').classList.add('active');
+      // Character unlock = positive moment → happytime
+      PlatformSDK.happytime();
       sfxWin();
-      console.log('[showCharModal] done — modal should now be visible');
     }
     function closeCharModal() {
       document.getElementById('charModal').classList.remove('active');
@@ -3583,7 +3592,6 @@
       const pct = (GS.growth / GS.maxG * 100);
       document.getElementById('gbFill').style.width = pct + '%';
       if (GS.growth >= GS.maxG && GS.running) {
-        console.log('[updateGB] WIN condition met! growth=', GS.growth, 'maxG=', GS.maxG, '— calling endLevel(true)');
         endLevel(true);
       }
     }
@@ -3798,18 +3806,17 @@
 
     // End level
     function endLevel(win) {
-      console.log('[endLevel] called win=', win, 'GS.running=', GS.running, 'GS.level=', GS.level);
-      if (!GS.running) { console.log('[endLevel] early return — not running'); return; }
+      if (!GS.running) return;
       GS.running = false; cancelAnimationFrame(gAF);
-      try { PlatformSDK.gameplayStop(); } catch(e) { console.warn('[endLevel] gameplayStop error', e); }
+      try { PlatformSDK.gameplayStop(); } catch(e) {}
       if (win) {
         try {
           PlatformSDK.completedLevelsCount++;
+          PlatformSDK.happytime();
           sfxWin(); G.score += GS.score;
           // Award coins for first-time completion
           const isNew = !G.done.includes(GS.level);
           const coinsEarned = isNew ? COINS_PER_LEVEL[GS.level] : Math.floor(COINS_PER_LEVEL[GS.level] * .25);
-          console.log('[endLevel] win! level=', GS.level, 'coinsEarned=', coinsEarned, 'isNew=', isNew);
           G.coins += coinsEarned;
           LS.s('coins', G.coins);
           updateCoinDisplay();
@@ -3817,7 +3824,6 @@
           if (!G.chars.includes(GS.level)) G.chars.push(GS.level);
           LS.s('done', G.done); LS.s('chars', G.chars); LS.s('score', G.score);
           const next = GS.level + 1;
-          console.log('[endLevel] next level=', next, '— calling showCharModal');
           if (next >= 10) {
             showCharModal(GS.level, () => {
               submitScore({ name: G.name, score: G.score, level_reached: 10, character_unlocked: LEVELS[9].cName, timestamp: new Date().toISOString() });
@@ -3836,17 +3842,15 @@
             }, coinsEarned);
           }
         } catch(e) {
-          console.error('[endLevel] WIN path error:', e);
-          // Fallback: force show level map so the player is not stuck
+          console.error('[Bloomy] endLevel error:', e);
+          // Fallback: ensure player is never stuck
           try { showScreen('levelMapScreen'); startMapAnim(); } catch(e2) {}
         }
       } else {
-        try {
-          sfxFail(); playGOSound(); showRGif('judge');
-          document.getElementById('goScore').textContent = `Score: ${GS.score.toLocaleString()}`;
-          document.getElementById('goMsg').textContent = `You reached ${Math.round(GS.growth / 10)}% growth. Keep going!`;
-          document.getElementById('goOvr').classList.add('active');
-        } catch(e) { console.error('[endLevel] LOSE path error:', e); }
+        sfxFail(); playGOSound(); showRGif('judge');
+        document.getElementById('goScore').textContent = `Score: ${GS.score.toLocaleString()}`;
+        document.getElementById('goMsg').textContent = `You reached ${Math.round(GS.growth / 10)}% growth. Keep going!`;
+        document.getElementById('goOvr').classList.add('active');
       }
     }
     function retryLvl() { document.getElementById('goOvr').classList.remove('active'); startLevel(GS.level); }
@@ -4212,23 +4216,23 @@
         this.aborted = false;
         this.clearAllTimeouts();
 
-        // --- PANEL 1: The Golden Age ---
+        // --- PANEL 1: The Golden Age (~2.5s) ---
         if (this.aborted) return;
         this.showPanel(0);
         this.startGoldenCanvas();
         const narration1 = document.getElementById('narration1');
         
-        await this.typewriterEffect(narration1, "Long ago, this land was known as the Garden of Eden...", 20, false);
+        await this.typewriterEffect(narration1, "Long ago, this land was the Garden of Eden...", 12, false);
         if (this.aborted) return;
-        await this.wait(1000);
-        if (this.aborted) return;
-
-        await this.typewriterEffect(narration1, "\nA village where flowers and farming brought joy, life, and prosperity to all.", 20, true);
-        if (this.aborted) return;
-        await this.wait(1500);
+        await this.wait(600);
         if (this.aborted) return;
 
-        // --- PANEL 2: The Curse Falls ---
+        await this.typewriterEffect(narration1, "\nFlowers and farming brought joy to all.", 12, true);
+        if (this.aborted) return;
+        await this.wait(800);
+        if (this.aborted) return;
+
+        // --- PANEL 2: The Curse Falls (~3s) ---
         this.showPanel(1);
         const narration2 = document.getElementById('narration2');
         const witch = document.getElementById('witchSilhouette');
@@ -4252,24 +4256,24 @@
             fallback.style.opacity = '0.65';
             fallback.style.animation = 'witchFallbackPulse 2s ease-in-out infinite alternate';
           }
-        }, 500);
+        }, 400);
 
-        await this.typewriterEffect(narration2, "But one dark night... a witch arrived.", 20, false);
+        await this.typewriterEffect(narration2, "But one dark night... a witch arrived.", 12, false);
         if (this.aborted) return;
-        await this.wait(1000);
-        if (this.aborted) return;
-
-        await this.typewriterEffect(narration2, "\nShe cursed the land — summoning an endless plague of insects.", 20, true);
-        if (this.aborted) return;
-        await this.wait(1000);
+        await this.wait(600);
         if (this.aborted) return;
 
-        await this.typewriterEffect(narration2, "\nCrops withered. Flowers died. The village fell silent.", 20, true);
+        await this.typewriterEffect(narration2, "\nShe cursed the land with an endless plague of insects.", 12, true);
         if (this.aborted) return;
-        await this.wait(1500);
+        await this.wait(600);
         if (this.aborted) return;
 
-        // --- PANEL 3: Many Tried. All Failed. ---
+        await this.typewriterEffect(narration2, "\nCrops withered. The village fell silent.", 12, true);
+        if (this.aborted) return;
+        await this.wait(800);
+        if (this.aborted) return;
+
+        // --- PANEL 3: Many Tried. All Failed. (~2.5s) ---
         this.showPanel(2);
         const narration3 = document.getElementById('narration3');
         const x1 = document.getElementById('redX1');
@@ -4279,39 +4283,23 @@
         if (x2) x2.classList.remove('appear');
         if (x3) x3.classList.remove('appear');
 
-        await this.typewriterEffect(narration3, "Many brave souls answered the call.", 20, false);
+        await this.typewriterEffect(narration3, "Many brave souls answered the call.", 12, false);
         if (this.aborted) return;
-        await this.wait(800);
-        if (this.aborted) return;
-
-        if (x1) {
-          x1.classList.add('appear');
-          tone(150, 'sawtooth', 0.1, 0.2);
-        }
-        await this.typewriterEffect(narration3, "\n\nWarriors. Mages. Farmers.", 20, true);
-        if (this.aborted) return;
-        await this.wait(800);
+        if (x1) { x1.classList.add('appear'); tone(150, 'sawtooth', 0.1, 0.2); }
+        await this.wait(500);
         if (this.aborted) return;
 
-        if (x2) {
-          x2.classList.add('appear');
-          tone(130, 'sawtooth', 0.1, 0.2);
-        }
-        await this.typewriterEffect(narration3, "\n\nNone could break the witch's hold.", 20, true);
+        if (x2) { x2.classList.add('appear'); tone(130, 'sawtooth', 0.1, 0.2); }
+        await this.typewriterEffect(narration3, "\n\nWarriors. Mages. Farmers. All failed.", 12, true);
         if (this.aborted) return;
-        await this.wait(800);
+        await this.wait(500);
         if (this.aborted) return;
 
-        if (x3) {
-          x3.classList.add('appear');
-          tone(110, 'sawtooth', 0.15, 0.2);
-        }
-        await this.typewriterEffect(narration3, "\n\nYears passed... and hope faded.", 20, true);
-        if (this.aborted) return;
-        await this.wait(1500);
+        if (x3) { x3.classList.add('appear'); tone(110, 'sawtooth', 0.15, 0.2); }
+        await this.wait(700);
         if (this.aborted) return;
 
-        // --- PANEL 4: The Healer Arrives ---
+        // --- PANEL 4: The Healer Arrives (~2.5s) ---
         this.showPanel(3);
         const narration4 = document.getElementById('narration4');
         const quote = document.getElementById('spokenQuote');
@@ -4319,19 +4307,14 @@
         if (healerBg) healerBg.classList.add('entered');
         if (quote) quote.classList.remove('visible');
 
-        await this.typewriterEffect(narration4, "Then... she came.", 20, false);
+        await this.typewriterEffect(narration4, "Then... a healer arrived.", 12, false);
         if (this.aborted) return;
-        await this.wait(800);
-        if (this.aborted) return;
-
-        await this.typewriterEffect(narration4, "\nA healer. Ancient in wisdom, gentle in power.", 20, true);
-        if (this.aborted) return;
-        await this.wait(1000);
+        await this.wait(500);
         if (this.aborted) return;
 
-        await this.typewriterEffect(narration4, "\nShe studied the curse and spoke words that sparked a new hope:", 20, true);
+        await this.typewriterEffect(narration4, "\nAncient in wisdom. She saw hope where others saw none:", 12, true);
         if (this.aborted) return;
-        await this.wait(800);
+        await this.wait(500);
         if (this.aborted) return;
 
         if (quote) {
@@ -4341,32 +4324,24 @@
           tone(784, 'sine', 0.3, 0.15, 0.2);
           tone(1047, 'sine', 0.4, 0.15, 0.3);
         }
-        await this.wait(2200);
+        await this.wait(1400);
         if (this.aborted) return;
 
-        // --- PANEL 5: The Call to Action ---
+        // --- PANEL 5: Call to Action (~2s) ---
         this.showPanel(4);
         const narration5 = document.getElementById('narration5');
         const btns = document.getElementById('actionButtons');
         if (btns) btns.classList.remove('visible');
         this.startStarCanvas();
 
-        await this.typewriterEffect(narration5, "The village waits.", 20, false);
+        await this.typewriterEffect(narration5, "The village waits. The flowers are dying.", 12, false);
         if (this.aborted) return;
-        await this.wait(800);
-        if (this.aborted) return;
-
-        await this.typewriterEffect(narration5, "\nThe flowers are dying.", 20, true);
-        if (this.aborted) return;
-        await this.wait(800);
+        await this.wait(600);
         if (this.aborted) return;
 
-        await this.typewriterEffect(narration5, "\nOnly YOU can complete the 10 Trials and break the curse.", 20, true);
+        await this.typewriterEffect(narration5, "\nOnly YOU can complete the 10 Trials and break the curse!", 12, true);
         if (this.aborted) return;
-        await this.wait(1000);
-        if (this.aborted) return;
-
-        await this.typewriterEffect(narration5, "\nAre you ready to save the Garden of Eden?", 20, true);
+        await this.wait(700);
         if (this.aborted) return;
 
         if (btns) {
