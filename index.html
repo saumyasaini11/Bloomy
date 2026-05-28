@@ -508,6 +508,15 @@
       display: flex;
     }
 
+    /* Canvas + XP bar wrapper */
+    .game-play-area {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
     #gachaScreen {
       display: none;
       flex-direction: column;
@@ -1422,6 +1431,187 @@
       transform: translate(1px, 1px);
       box-shadow: 1px 1px 0 var(--border);
     }
+
+    /* ===== LANDSCAPE MOBILE SUPPORT ===== */
+    /* Targets phones in landscape: short height, wide width */
+    @media screen and (max-height: 500px) and (orientation: landscape) {
+
+      /* ── Game Screen: flip to row layout ── */
+      #gameScreen {
+        flex-direction: row !important;
+      }
+
+      /* HUD becomes a left sidebar */
+      #gameScreen .hud {
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        border-bottom: none !important;
+        border-right: 4px solid var(--border) !important;
+        padding: 6px 6px !important;
+        gap: 6px !important;
+        width: 72px !important;
+        flex-shrink: 0 !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+      }
+
+      /* Shrink HUD boxes to be more compact vertically */
+      #gameScreen .hud .hud-box {
+        flex-direction: column !important;
+        gap: 3px !important;
+        padding: 4px 6px !important;
+        width: 100% !important;
+        text-align: center !important;
+      }
+
+      #gameScreen .hud .hud-face {
+        width: 26px !important;
+        height: 26px !important;
+        font-size: 12px !important;
+      }
+
+      #gameScreen .hud .hud-name { font-size: 5px !important; }
+
+      /* Score / coins text in HUD */
+      #gameScreen #gScore { font-size: 9px !important; }
+      #gameScreen #gCoins { font-size: 8px !important; }
+
+      /* Sound / pause buttons */
+      #gameScreen .hud > div:last-child {
+        flex-direction: column !important;
+        gap: 4px !important;
+        margin-left: 0 !important;
+      }
+      #gameScreen .hud .btn-sm {
+        padding: 5px 4px !important;
+        font-size: 7px !important;
+        width: 100% !important;
+      }
+
+      /* Landscape HUD label - hide SCORE/COINS labels */
+      #gameScreen .hud [style*="font-size:7px"],
+      #gameScreen .hud [style*="font-size:6px"] {
+        display: none !important;
+      }
+
+      /* Canvas area: fills remaining space */
+      .game-play-area {
+        flex: 1 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
+      }
+
+      /* Canvas fills the play area */
+      #gameCanvas {
+        width: 100% !important;
+        height: 100% !important;
+        flex: 1 !important;
+        min-height: 0 !important;
+      }
+
+      /* XP bar: at the bottom of the play area column */
+      #gameScreen .gb-wrap {
+        border-top: 4px solid var(--border) !important;
+        border-left: none !important;
+        padding: 4px 8px !important;
+        flex-shrink: 0 !important;
+      }
+
+      /* XP bar label and bar in landscape */
+      #gameScreen .gb-label { font-size: 5px !important; margin-bottom: 2px !important; }
+      #gameScreen .gb-outer { height: 14px !important; }
+
+      /* Feature banner — drop below HUD bar in landscape */
+      #featBanner { top: 50px !important; }
+
+      /* Attack alert — adjust top */
+      .attack-alert { top: 50px !important; font-size: 7px !important; padding: 6px 12px !important; }
+
+      /* Overlays (pause/game-over) — make compact */
+      .over-box {
+        padding: 14px 20px !important;
+      }
+      .over-box [style*="font-size:18px"] { font-size: 12px !important; }
+      .over-box [style*="font-size:34px"] { font-size: 20px !important; }
+      .over-box [style*="font-size:14px"] { font-size: 9px !important; }
+
+      /* ── Home Screen ── */
+      #homeScreen .home-wrap {
+        flex-direction: row !important;
+        padding: 8px 12px 0 !important;
+        gap: 12px !important;
+        overflow-y: auto !important;
+      }
+      #homeScreen .home-left {
+        width: 50% !important;
+        gap: 8px !important;
+      }
+      #homeScreen .home-right {
+        width: 50% !important;
+      }
+      .game-title { font-size: 18px !important; }
+      .htp-panel { margin: 4px 8px !important; }
+      .htp-boxes { gap: 4px !important; }
+      .htp-icon { width: 32px !important; height: 32px !important; }
+
+      /* ── Map screen ── */
+      .map-bar { height: 44px !important; }
+      #mapCanvas { top: 44px !important; }
+      .gf-panel { bottom: 8px !important; left: 8px !important; padding: 4px 8px !important; }
+
+      /* ── Char modal ── */
+      .char-box {
+        padding: 12px 16px !important;
+        max-height: 96vh !important;
+        overflow-y: auto !important;
+        max-width: 420px !important;
+        display: flex !important;
+        flex-direction: row !important;
+        gap: 12px !important;
+        align-items: center !important;
+        text-align: left !important;
+      }
+      .char-face {
+        width: 64px !important;
+        height: 64px !important;
+        flex-shrink: 0 !important;
+        font-size: 28px !important;
+      }
+      .char-box > div:not(.char-face) { flex: 1 !important; min-width: 0 !important; }
+
+      /* ── End screen ── */
+      #endScreen > div {
+        padding: 10px !important;
+        overflow-y: auto !important;
+        max-height: 96vh !important;
+      }
+
+      /* ── Gacha screen ── */
+      .gacha-layout { flex-direction: row !important; gap: 12px !important; padding: 6px !important; }
+      #gacha-machine { width: 130px !important; height: 180px !important; }
+      #machine-window { width: 110px !important; height: 78px !important; }
+      #gacha-knob { width: 32px !important; height: 32px !important; bottom: 48px !important; }
+      #dispense-slot { width: 42px !important; height: 30px !important; }
+
+      /* ── Intro screen ── */
+      .intro-panel { padding: 10px !important; }
+      .intro-narration { font-size: 7px !important; line-height: 1.6 !important; }
+      .intro-persistent-skip { top: 6px !important; right: 8px !important; }
+      #actionButtons { gap: 8px !important; }
+      .btn-ready { padding: 8px 12px !important; font-size: 8px !important; }
+    }
+
+    /* Extra-small landscape phones (iPhone SE landscape = 568px wide, 320px tall) */
+    @media screen and (max-height: 380px) and (orientation: landscape) {
+      #gameScreen .hud { width: 60px !important; padding: 4px !important; gap: 4px !important; }
+      #gameScreen .hud .hud-box { padding: 3px 4px !important; }
+      #gameScreen .hud .hud-face { width: 20px !important; height: 20px !important; }
+      .char-box { padding: 8px 12px !important; }
+      .char-face { width: 48px !important; height: 48px !important; }
+    }
   </style>
 </head>
 
@@ -2234,13 +2424,15 @@
       <span id="attackAlertText">INCOMING!</span>
     </div>
 
-    <canvas id="gameCanvas" style="display:block;flex:1;width:100%;cursor:none;"></canvas>
+    <div class="game-play-area">
+      <canvas id="gameCanvas" style="display:block;flex:1;width:100%;cursor:none;"></canvas>
 
-    <div class="gb-wrap">
-      <div class="gb-label">🌱 MASTER GARDENER XP</div>
-      <div class="gb-outer">
-        <div id="gbFill" class="gb-fill" style="width:0%;">
-          <span style="position:absolute;right:-13px;top:50%;transform:translateY(-50%);font-size:17px;">🌸</span>
+      <div class="gb-wrap">
+        <div class="gb-label">🌱 MASTER GARDENER XP</div>
+        <div class="gb-outer">
+          <div id="gbFill" class="gb-fill" style="width:0%;">
+            <span style="position:absolute;right:-13px;top:50%;transform:translateY(-50%);font-size:17px;">🌸</span>
+          </div>
         </div>
       </div>
     </div>
@@ -3325,9 +3517,23 @@
       });
     }
     function resizeGC() {
-      const hud = document.querySelector('.hud'), gb = document.querySelector('.gb-wrap');
-      gC.width = window.innerWidth;
-      gC.height = window.innerHeight - (hud ? hud.offsetHeight : 60) - (gb ? gb.offsetHeight : 50);
+      const hud = document.querySelector('#gameScreen .hud');
+      const gb  = document.querySelector('#gameScreen .gb-wrap');
+      const isLandscapeMobile = window.innerHeight < 500 && window.innerWidth > window.innerHeight;
+
+      if (isLandscapeMobile) {
+        // In landscape: HUD is a left sidebar; play-area takes remaining width
+        const hudW = hud ? hud.offsetWidth : 72;
+        const gbH  = gb  ? gb.offsetHeight : 20;
+        gC.width  = window.innerWidth - hudW;
+        gC.height = window.innerHeight - gbH;
+      } else {
+        // Portrait: HUD top bar, XP bar bottom
+        const hudH = hud ? hud.offsetHeight : 60;
+        const gbH  = gb  ? gb.offsetHeight : 50;
+        gC.width  = window.innerWidth;
+        gC.height = window.innerHeight - hudH - gbH;
+      }
     }
     function showBanner(txt) {
       const b = document.getElementById('featBanner'); b.textContent = txt;
@@ -3943,6 +4149,13 @@
 
     window.addEventListener('resize', () => {
       if (document.getElementById('gameScreen').classList.contains('active') && GS.running) resizeGC();
+    });
+
+    // Re-size canvas when phone rotates (orientation change fires before resize completes)
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => {
+        if (document.getElementById('gameScreen').classList.contains('active') && GS.running) resizeGC();
+      }, 200); // short delay so the browser has finished reflowing
     });
 
     // ===== INTRO & STORY LOGIC =====
